@@ -1,0 +1,4 @@
+albumentations
+numpy
+opencv-python
+torch
