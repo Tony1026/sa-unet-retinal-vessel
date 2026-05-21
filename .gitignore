@@ -7,11 +7,5 @@ __pycache__/
 venv/
 env/
 
-# Training data
-datasets/
-
-# Experiment outputs
-output/
-
 # Experiment-related documents
 docs/
