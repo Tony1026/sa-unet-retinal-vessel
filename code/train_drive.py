@@ -7,15 +7,15 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from dataset import DriveDataset, build_train_transform
+from dataset import DriveDataset, build_train_transform, input_channels_for_mode
 from experiment_utils import apply_training_defaults, count_parameters, default_batch_size, save_json, seed_everything, select_device
-from model_factory import create_model
+from model_factory import available_models, create_model
 from training_core import EarlyStopping, THRESHOLD_CANDIDATES, collect_records, evaluate_split, run_epoch, select_threshold
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train retinal vessel models on DRIVE')
-    parser.add_argument('--model-name', type=str, default='sa_unet', choices=['sa_unet', 'sa_unetv2'])
+    parser.add_argument('--model-name', type=str, default='sa_unet', choices=available_models())
     parser.add_argument('--epochs', type=int, default=None)
     parser.add_argument('--lr', type=float, default=None)
     parser.add_argument('--weight-decay', type=float, default=None)
@@ -23,6 +23,10 @@ def parse_args():
     parser.add_argument('--num-workers', type=int, default=0)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--device', type=str, default='auto', choices=['auto', 'cuda', 'mps', 'cpu'])
+    parser.add_argument('--data-root', type=str, default=None)
+    parser.add_argument('--input-mode', type=str, default='green_clahe', choices=['green_clahe', 'green', 'rgb'])
+    parser.add_argument('--loss-mode', type=str, default='bce_dice', choices=['bce', 'bce_dice'])
+    parser.add_argument('--label-bias-mode', type=str, default='none', choices=['none', 'second', 'random_primary'])
     parser.add_argument('--drive-train-ratio', type=float, default=0.8)
     parser.add_argument('--base-channels', type=int, default=16)
     parser.add_argument('--drop-prob', type=float, default=None)
@@ -44,19 +48,42 @@ def main():
     batch_size = args.batch_size if args.batch_size is not None else default_batch_size(device_type)
 
     train_loader = DataLoader(
-        DriveDataset(split='train', image_size=args.image_size, train_ratio=args.drive_train_ratio, seed=args.seed, transform=build_train_transform()),
+        DriveDataset(
+            split='train',
+            image_size=args.image_size,
+            train_ratio=args.drive_train_ratio,
+            seed=args.seed,
+            transform=build_train_transform(),
+            input_mode=args.input_mode,
+            data_root=args.data_root,
+            label_bias_mode=args.label_bias_mode,
+        ),
         batch_size=batch_size,
         shuffle=True,
         num_workers=args.num_workers,
     )
     val_loader = DataLoader(
-        DriveDataset(split='val', image_size=args.image_size, train_ratio=args.drive_train_ratio, seed=args.seed),
+        DriveDataset(
+            split='val',
+            image_size=args.image_size,
+            train_ratio=args.drive_train_ratio,
+            seed=args.seed,
+            input_mode=args.input_mode,
+            data_root=args.data_root,
+            label_bias_mode=args.label_bias_mode,
+        ),
         batch_size=1,
         shuffle=False,
         num_workers=args.num_workers,
     )
     test_loader = DataLoader(
-        DriveDataset(split='drive_test', image_size=args.image_size),
+        DriveDataset(
+            split='drive_test',
+            image_size=args.image_size,
+            input_mode=args.input_mode,
+            data_root=args.data_root,
+            label_bias_mode=args.label_bias_mode,
+        ),
         batch_size=1,
         shuffle=False,
         num_workers=args.num_workers,
@@ -69,7 +96,7 @@ def main():
 
     model = create_model(
         args.model_name,
-        in_channels=1,
+        in_channels=input_channels_for_mode(args.input_mode),
         base_channels=args.base_channels,
         drop_prob=args.drop_prob,
         block_size=args.block_size,
@@ -93,8 +120,8 @@ def main():
     start_time = time.time()
 
     for epoch in range(1, args.epochs + 1):
-        train_metrics = run_epoch(model, train_loader, optimizer, device, amp_enabled)
-        val_records, val_meta = collect_records(model, val_loader, device, inference_mode='full_image')
+        train_metrics = run_epoch(model, train_loader, optimizer, device, amp_enabled, loss_mode=args.loss_mode)
+        val_records, val_meta = collect_records(model, val_loader, device, inference_mode='full_image', loss_mode=args.loss_mode)
         selected_threshold, val_metrics = select_threshold(val_records, loss=val_meta.get('loss'))
         val_loss = float(val_metrics['loss'])
         scheduler.step(val_loss)
@@ -125,8 +152,10 @@ def main():
                     'args': {
                         'model_name': args.model_name,
                         'dataset_name': 'drive',
-                        'input_mode': 'green_clahe',
-                        'loss_mode': 'bce_dice',
+                        'seed': args.seed,
+                        'input_mode': args.input_mode,
+                        'loss_mode': args.loss_mode,
+                        'label_bias_mode': args.label_bias_mode,
                         'resize_to': args.image_size,
                         'base_channels': args.base_channels,
                         'drop_prob': args.drop_prob,
@@ -152,7 +181,7 @@ def main():
     selected_threshold = float(checkpoint['selected_threshold'])
     epochs_ran = len(history)
 
-    val_summary = evaluate_split(model, val_loader, device, 'full_image', selected_threshold)
+    val_summary = evaluate_split(model, val_loader, device, 'full_image', selected_threshold, loss_mode=args.loss_mode)
     drive_test_summary = evaluate_split(
         model,
         test_loader,
@@ -160,16 +189,29 @@ def main():
         'full_image',
         selected_threshold,
         output_dir=os.path.join(prediction_dir, 'drive_test'),
+        loss_mode=args.loss_mode,
     )
+    val_metrics_summary = {key: value for key, value in val_summary.items() if key not in ('records', 'meta')}
+    drive_test_metrics_summary = {key: value for key, value in drive_test_summary.items() if key not in ('records', 'meta')}
 
     metrics = {
         'model_name': args.model_name,
         'dataset_name': 'drive',
+        'seed': args.seed,
         'device': device_type,
         'batch_size': batch_size,
+        'data_root': args.data_root,
+        'train_ratio': args.drive_train_ratio,
+        'train_samples': len(train_loader.dataset.items),
+        'val_samples': len(val_loader.dataset.items),
+        'test_samples': len(test_loader.dataset.items),
+        'train_names': [item['name'] for item in train_loader.dataset.items],
+        'val_names': [item['name'] for item in val_loader.dataset.items],
+        'test_names': [item['name'] for item in test_loader.dataset.items],
         'parameter_count': count_parameters(model),
-        'input_mode': 'green_clahe',
-        'loss_mode': 'bce_dice',
+        'input_mode': args.input_mode,
+        'loss_mode': args.loss_mode,
+        'label_bias_mode': args.label_bias_mode,
         'resize_to': args.image_size,
         'epochs': epochs_ran,
         'max_epochs': args.epochs,
@@ -187,12 +229,11 @@ def main():
         'early_stop_patience': args.early_stop_patience,
         'history': history,
         'val_primary': val_summary['primary'],
-        'drive_test': {
-            'primary': drive_test_summary['primary'],
-            'secondary': drive_test_summary['secondary'],
-            'inter_observer': drive_test_summary['inter_observer'],
-        },
+        'val': val_metrics_summary,
+        'drive_test': drive_test_metrics_summary,
     }
+    if hasattr(model, 'flow_report'):
+        metrics['flow_report'] = model.flow_report()
     save_json(metrics, os.path.join(output_dir, 'metrics.json'))
     print(f"Best checkpoint: {best_path}")
     print(f"Metrics saved to: {os.path.join(output_dir, 'metrics.json')}")

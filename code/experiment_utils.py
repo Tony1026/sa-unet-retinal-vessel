@@ -10,6 +10,144 @@ import torch.nn.functional as F
 
 
 MODEL_HPARAM_DEFAULTS = {
+    'gflow_unet': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_unet_direct': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_unet_direct_no_cons': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_unet_direct_random': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_unet_direct_randinit': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_unet_direct_uniform': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_unet_no_cons': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_unet_random': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_unet_randinit': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_unet_uniform': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2_cond': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2_cond_no_cons': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2_cond_random': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2_cond_randinit': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2_cond_uniform': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2_no_cons': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2_random': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2_randinit': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'gflow_sa_unetv2_uniform': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'multihead_unet': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.0,
+        'block_size': 7,
+    },
+    'multihead_sa_unetv2': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.15,
+        'block_size': 7,
+    },
+    'unet': {
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+        'drop_prob': 0.0,
+        'block_size': 7,
+    },
     'sa_unet': {
         'lr': 1e-3,
         'weight_decay': 0.0,
@@ -179,10 +317,16 @@ def build_thresholds(start=0.30, end=0.70, step=0.05):
     return [round(float(value), 2) for value in values]
 
 
+def primary_output_logits(output):
+    if isinstance(output, dict):
+        return output.get('logits', output.get('sink1'))
+    return output
+
+
 @torch.no_grad()
 def predict_probs(model, images, use_tta=False):
     if not use_tta:
-        return torch.sigmoid(model(images))
+        return torch.sigmoid(primary_output_logits(model(images)))
 
     transforms = [
         (lambda x: x, lambda x: x),
@@ -195,6 +339,6 @@ def predict_probs(model, images, use_tta=False):
     ]
     outputs = []
     for forward_transform, inverse_transform in transforms:
-        probs = torch.sigmoid(model(forward_transform(images)))
+        probs = torch.sigmoid(primary_output_logits(model(forward_transform(images))))
         outputs.append(inverse_transform(probs))
     return torch.mean(torch.stack(outputs, dim=0), dim=0)

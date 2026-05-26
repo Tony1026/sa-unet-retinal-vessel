@@ -1,0 +1,11 @@
+dataset,variant,test_dice,test_iou,test_accuracy,best_val_dice,epochs_ran,selected_threshold,parameter_count,metrics_path
+DRIVE,U-Net baseline best,0.8147697816324243,0.687663805367653,0.9522998827868514,0.8235323428895913,233,0.35,482737,output_priority/drive/unet_rgb_bce_dice/metrics.json
+DRIVE,GFlow learned + conservation,0.8216957274026809,0.6976074554803461,0.9539244290446595,0.8255302307610142,300,0.5,210441,output_gflow/drive/gflow_unet_green_clahe_bce_dice/metrics.json
+DRIVE,GFlow learned - conservation,0.8191755555148659,0.6939945574996079,0.9536609452342246,0.8208909483801567,300,0.5,210441,output_gflow_ablation/drive/gflow_unet_no_cons_green_clahe_bce_dice/metrics.json
+DRIVE,GFlow fixed uniform,0.8207794388723327,0.6962825123557073,0.953639952872422,0.8242759327984241,300,0.5,210421,output_gflow_ablation/drive/gflow_unet_uniform_green_clahe_bce_dice/metrics.json
+DRIVE,GFlow fixed random,0.8221341833631218,0.6982093477477654,0.9541521551947454,0.8257583200137204,300,0.5,210421,output_gflow_ablation/drive/gflow_unet_random_green_clahe_bce_dice/metrics.json
+CHASE,U-Net baseline best,0.8101229045085678,0.6811552535104799,0.9628631575544917,0.8558609600700916,238,0.35,482737,output_priority/chase/unet_rgb_bce_dice/metrics.json
+CHASE,GFlow learned + conservation,0.812012724819581,0.6838152759146168,0.9628880233332178,0.8496228728959907,294,0.4,471745,output_gflow/chase/gflow_unet_fixed_b24_green_clahe_bce_dice/metrics.json
+CHASE,GFlow learned - conservation,0.8097528837494183,0.6806242142225661,0.9623461368745626,0.8493129227370693,224,0.4,471745,output_gflow_ablation/chase/gflow_unet_no_cons_b24_green_clahe_bce_dice/metrics.json
+CHASE,GFlow fixed uniform,0.8098142114428764,0.680728437761378,0.9623559778651184,0.8458299344719062,228,0.45,471725,output_gflow_ablation/chase/gflow_unet_uniform_b24_green_clahe_bce_dice/metrics.json
+CHASE,GFlow fixed random,0.8109861898895713,0.6823701513416672,0.9624383821273018,0.8489653207470924,242,0.35,471725,"output_gflow_ablation/chase/gflow_unet_random_b24_green_clahe_bce_dice/metrics.json"
