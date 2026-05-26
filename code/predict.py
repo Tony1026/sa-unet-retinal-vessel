@@ -4,10 +4,10 @@ import os
 import torch
 from torch.utils.data import DataLoader
 
-from dataset import ChaseFullImageDataset, DriveDataset
+from dataset import ChaseFullImageDataset, DriveDataset, input_channels_for_mode
 from experiment_utils import ensure_dir, save_prediction_image, select_device
 from model_factory import create_model
-from training_core import sliding_window_predict_probs
+from training_core import _crop_to_valid_region, sliding_window_predict_probs
 
 
 def parse_args():
@@ -15,19 +15,34 @@ def parse_args():
     parser.add_argument('--checkpoint', type=str, required=True)
     parser.add_argument('--split', type=str, default=None)
     parser.add_argument('--device', type=str, default='auto', choices=['auto', 'cuda', 'mps', 'cpu'])
+    parser.add_argument('--data-root', type=str, default=None)
     parser.add_argument('--output-dir', type=str, default=None)
     parser.add_argument('--threshold', type=float, default=None)
     return parser.parse_args()
 
 
-def build_dataset(model_args, split):
+def build_dataset(model_args, split, data_root=None):
     dataset_name = model_args.get('dataset_name')
+    input_mode = model_args.get('input_mode', 'green_clahe')
     if dataset_name == 'drive':
         resolved_split = split or 'drive_test'
-        return DriveDataset(split=resolved_split, image_size=model_args.get('resize_to', 592)), 'full_image', resolved_split
+        return (
+            DriveDataset(
+                split=resolved_split,
+                image_size=model_args.get('resize_to', 592),
+                input_mode=input_mode,
+                data_root=data_root,
+            ),
+            'full_image',
+            resolved_split,
+        )
     if dataset_name == 'chase':
         resolved_split = split or 'test'
-        return ChaseFullImageDataset(split=resolved_split), 'sliding_window', resolved_split
+        return (
+            ChaseFullImageDataset(split=resolved_split, input_mode=input_mode, data_root=data_root),
+            'sliding_window',
+            resolved_split,
+        )
     raise ValueError(f"Unsupported checkpoint dataset: {dataset_name}")
 
 
@@ -39,7 +54,7 @@ def main():
     model_args = checkpoint.get('args', {})
     model = create_model(
         model_args['model_name'],
-        in_channels=1,
+        in_channels=input_channels_for_mode(model_args.get('input_mode', 'green_clahe')),
         base_channels=model_args.get('base_channels', 16),
         drop_prob=model_args.get('drop_prob', 0.18),
         block_size=model_args.get('block_size', 7),
@@ -47,7 +62,7 @@ def main():
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
 
-    dataset, inference_mode, resolved_split = build_dataset(model_args, args.split)
+    dataset, inference_mode, resolved_split = build_dataset(model_args, args.split, data_root=args.data_root)
     loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     threshold = args.threshold if args.threshold is not None else checkpoint.get('selected_threshold', 0.5)
     output_dir = os.path.abspath(
@@ -68,8 +83,10 @@ def main():
             )
         else:
             probs = torch.sigmoid(model(image))
-        prob_map = probs[0, 0].detach().cpu().numpy()
-        mask = batch['mask'][0, 0].detach().cpu().numpy() > 0.5
+        valid_region = batch['valid_region'][0].detach().cpu().tolist()
+        probs = _crop_to_valid_region(probs[0:1].detach().cpu(), valid_region)
+        mask = _crop_to_valid_region(batch['mask'][0:1].detach().cpu(), valid_region)[0, 0].numpy() > 0.5
+        prob_map = probs[0, 0].numpy()
         dataset_name = batch['dataset'][0]
         name = batch['name'][0]
         target_path = os.path.join(output_dir, dataset_name)

@@ -1,0 +1,5 @@
+dataset,variant,primary_dice,secondary_dice,primary_iou,best_val_dice,epochs_ran,label_bias_mode,metrics_path
+DRIVE,GFlow multi-sink + simulated second annotation,0.8198901150819531,0.8396736492941137,0.6950130245479347,0.8224354913258266,300,second,output_gflow_bias/drive/gflow_unet_bias_second_soft_green_clahe_bce_dice/metrics.json
+DRIVE,Single-head U-Net + simulated random primary,0.8131773450607225,0.8282303441125732,0.6853462099318224,0.8239559243552097,254,random_primary,output_gflow_bias/drive/unet_bias_random_primary_green_clahe_bce_dice/metrics.json
+CHASE,GFlow multi-sink + simulated second annotation,0.8083080208396236,0.818738366132574,0.6786195335436207,0.8507089148386359,253,second,output_gflow_bias/chase/gflow_unet_bias_second_b24_green_clahe_bce_dice/metrics.json
+CHASE,Single-head U-Net + simulated random primary,0.8043838111498169,0.8114742885534494,0.6730931899335799,0.84855645211906,195,random_primary,"output_gflow_bias/chase/unet_bias_random_primary_b24_green_clahe_bce_dice/metrics.json"
